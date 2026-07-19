@@ -69,3 +69,17 @@ test("keeps ServiceNow secrets out of browser-exposed configuration", async () =
   assert.doesNotMatch(combined, /Basic\s+[A-Za-z0-9+/=]+|Authorization['"]\s*:/i);
   assert.match(envExample, /NEXT_PUBLIC_IDENTITY_GUARD_API_BASE/);
 });
+
+test("Identity Guard proxy uses server-only ServiceNow configuration", async () => {
+  const route = await readFile(new URL("../app/api/identity-guard/[...path]/route.ts", import.meta.url), "utf8");
+  const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+
+  assert.match(route, /SERVICENOW_INSTANCE_URL/);
+  assert.match(route, /SERVICENOW_IDENTITY_GUARD_PATH/);
+  assert.match(route, /\/api\/x_kest_data_sort\/data_sorters_identity_guard_api/);
+  assert.match(route, /Authorization/);
+  assert.match(route, /export async function GET/);
+  assert.match(route, /export async function POST/);
+  assert.match(envExample, /SERVICENOW_IDENTITY_GUARD_PATH=\/api\/x_kest_data_sort\/data_sorters_identity_guard_api/);
+  assert.doesNotMatch(envExample, /NEXT_PUBLIC_SERVICENOW_(USERNAME|PASSWORD|BEARER|TOKEN)/i);
+});
