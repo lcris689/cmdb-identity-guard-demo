@@ -42,5 +42,4 @@ POST /analysis/start
 The current screens use mock records so the interface remains demoable while the analyzer is completed. The next implementation step is replacing each mock collection in `app/page.tsx` with calls from `identityGuardApi` and adding loading/error states.
 
 ## GitHub
-
 This directory is already initialized on branch `main`. Add your empty GitHub repository as `origin`, commit, and push when ready.
