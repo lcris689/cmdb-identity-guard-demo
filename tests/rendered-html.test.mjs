@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -28,64 +23,49 @@ async function render() {
   );
 }
 
-test("server-renders the starter loading skeleton", async () => {
+test("server-renders the Identity Guard shell with mock fallback content", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(html, /<title>Your site is taking shape<\/title>/i);
-  assert.match(html, /Building your site/);
-  assert.match(html, /Your site is taking shape/);
-  assert.match(
-    html,
-    /Your first version will appear here automatically when it’s ready\./,
-  );
-  assert.doesNotMatch(html, /Codex/);
-  assert.match(html, /react-loading-skeleton/);
-  assert.match(html, /role="status"/);
+  assert.match(html, /<title>Data Sorters CMDB Identity Guard<\/title>/i);
+  assert.match(html, /Identity Guard/);
+  assert.match(html, /CMDB governance/);
+  assert.match(html, /Start analysis/);
+  assert.match(html, /Review queue/);
+  assert.match(html, /Guardrails/);
+  assert.match(html, /DATA_SORTERS scope/);
+  assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
 });
 
-test("keeps the loading skeleton scoped and disposable", async () => {
-  const [preview, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("SkeletonPreview.tsx", previewRoot), "utf8"),
-    readFile(new URL("preview.css", previewRoot), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(previewRoot),
-  ]);
+test("page uses the typed Identity Guard API with mock fallback and async UI states", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const api = await readFile(new URL("../app/lib/identity-guard-api.ts", import.meta.url), "utf8");
 
-  assert.deepEqual(files.sort(), ["SkeletonPreview.tsx", "preview.css"]);
-  assert.match(preview, /from "react-loading-skeleton"/);
-  assert.match(preview, /baseColor="#eceae7"/);
-  assert.match(preview, /highlightColor="#f9f8f6"/);
-  assert.match(preview, /duration=\{2\.8\}/);
-  assert.match(preview, /sites-skeleton-search-placeholder/);
-  assert.match(packageJson, /"react-loading-skeleton": "3\.5\.0"/);
+  assert.match(page, /identityGuardApi/);
+  assert.match(page, /NEXT_PUBLIC_IDENTITY_GUARD_USE_MOCKS/);
+  assert.match(page, /useEffect/);
+  assert.match(page, /Loading ServiceNow data/);
+  assert.match(page, /Unable to load ServiceNow data/);
+  assert.match(page, /No duplicate groups found/);
+  assert.match(page, /submitDecision|identityGuardApi\.decide/);
+  assert.match(page, /runStartAnalysis|identityGuardApi\.startAnalysis/);
+  assert.match(page, /identityGuardApi\.group\(/);
 
-  const shellIndex = preview.indexOf('className="sites-skeleton-shell"');
-  const statusIndex = preview.indexOf('className="sites-skeleton-status"');
-  assert.ok(shellIndex >= 0 && statusIndex > shellIndex);
-  assert.match(css, /position:\s*fixed/);
-  assert.match(css, /inset:\s*0/);
-  assert.match(css, /opacity:\s*0\.52/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(css, /#020617|canvas|pets|progress/i);
-  assert.doesNotMatch(
-    preview,
-    /loading-spinner|status-mark|status-progress|canvas|cookie|random/i,
-  );
+  assert.match(api, /export type IdentityGuardSummary/);
+  assert.match(api, /export type DuplicateGroupDetail/);
+  assert.match(api, /normalizeGroup/);
+  assert.match(api, /startAnalysis/);
+});
 
-  assert.match(page, /export const metadata:\s*Metadata/);
-  assert.match(page, /"codex-preview": "development"/);
-  assert.match(page, /<SkeletonPreview \/>/);
-  assert.match(layout, /title:\s*"Starter Project"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview|themeColor|\bViewport\b/);
-  assert.doesNotMatch(css, /(^|\s)(html|body)\s*\{/m);
+test("keeps ServiceNow secrets out of browser-exposed configuration", async () => {
+  const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const api = await readFile(new URL("../app/lib/identity-guard-api.ts", import.meta.url), "utf8");
 
-  await assert.rejects(
-    access(new URL("public/_sites-preview", templateRoot)),
-  );
+  const combined = `${envExample}\n${page}\n${api}`;
+  assert.doesNotMatch(combined, /NEXT_PUBLIC_.*(?:PASSWORD|SECRET|TOKEN|USER)/i);
+  assert.doesNotMatch(combined, /Basic\s+[A-Za-z0-9+/=]+|Authorization['"]\s*:/i);
+  assert.match(envExample, /NEXT_PUBLIC_IDENTITY_GUARD_API_BASE/);
 });
