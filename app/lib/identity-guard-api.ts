@@ -6,6 +6,8 @@ type Envelope<T> = {
   error: { code: string; message: string } | null;
 };
 
+type ServiceNowEnvelope<T> = Envelope<T> | { result: Envelope<T> };
+
 type UnknownRecord = Record<string, unknown>;
 
 export type IdentityGuardSummary = {
@@ -127,6 +129,19 @@ function listFrom<T = unknown>(value: unknown): T[] {
   return [];
 }
 
+function recordFromJson(value: unknown): UnknownRecord {
+  if (isRecord(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return isRecord(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 export function normalizeSummary(raw: unknown): IdentityGuardSummary {
   return {
     ciSourceRecords: numberValue(field(raw, "ci_source_records", "ciSourceRecords", "records_scanned", "recordsScanned")),
@@ -146,7 +161,7 @@ export function normalizeRun(raw: unknown): AnalysisRun {
     sysId: sysId(field(raw, "sys_id", "sysId")),
     number: display(field(raw, "number"), "DAR—"),
     name: display(field(raw, "name"), "Analysis run"),
-    status: display(field(raw, "status"), "Unknown"),
+    status: display(field(raw, "status_display", "status"), "Unknown"),
     recordsScanned: numberValue(field(raw, "records_scanned", "recordsScanned", "records")),
     groupsCreated: numberValue(field(raw, "groups_created", "groupsCreated", "groups")),
     started: display(field(raw, "started", "started_on", "startedAt"), "—"),
@@ -155,12 +170,14 @@ export function normalizeRun(raw: unknown): AnalysisRun {
 }
 
 export function normalizeCandidate(raw: unknown): CandidateEvidence {
-  const source = field(raw, "ci_source_record", "ciSourceRecord", "ci", "source_record") || raw;
+  const reference = field(raw, "ci_source_record", "ciSourceRecord", "ci", "source_record") || raw;
+  const evidence = recordFromJson(field(raw, "match_evidence", "matchEvidence"));
+  const source = { ...recordFromJson(reference), ...evidence };
   return {
     sysId: sysId(field(raw, "sys_id", "sysId", "ci_source_record", "ciSourceRecord")),
-    name: display(field(raw, "ci_name_snapshot", "name", "ci_name", "ciName", "source_name")),
-    source: display(field(raw, "discovery_source", "source", "source_name")),
-    serial: display(field(raw, "serial_number", "serial", "serialNumber") || field(source, "serial_number", "serialNumber")),
+    name: display(field(raw, "ci_name_snapshot", "ci_name", "ciName", "name", "source_name") || field(source, "name")),
+    source: display(field(raw, "discovery_source", "source", "source_name") || field(source, "discovery_source", "source")),
+    serial: display(field(raw, "serial_number", "serial", "serialNumber") || field(source, "serial_number", "serialNumber", "serial")),
     assetTag: display(field(raw, "asset_tag", "assetTag") || field(source, "asset_tag", "assetTag")),
     host: display(field(raw, "host_name", "host", "hostname") || field(source, "host_name", "host", "hostname")),
     fqdn: display(field(raw, "fqdn") || field(source, "fqdn")),
@@ -180,7 +197,7 @@ export function normalizeGroup(raw: unknown): DuplicateGroup {
     confidence: numberValue(field(raw, "confidence_score", "confidenceScore", "confidence")),
     label: display(field(raw, "confidence_label", "confidenceLabel", "label"), "Possible"),
     candidates: numberValue(field(raw, "candidate_count", "candidateCount", "candidates"), evidence.length),
-    status: display(field(raw, "status"), "New"),
+    status: display(field(raw, "status_display", "status"), "New"),
     oversized: boolValue(field(raw, "oversized_group", "oversizedGroup", "oversized")),
     dataQualityWarning: display(field(raw, "data_quality_warning", "dataQualityWarning"), ""),
     aiSummary: display(field(raw, "ai_summary", "aiSummary"), ""),
@@ -197,10 +214,10 @@ export function normalizeGuardrail(raw: unknown): IreGuardrail {
     number: display(field(raw, "number"), "IRG—"),
     duplicateGroup: display(field(raw, "duplicate_group", "duplicateGroup"), ""),
     identifier: display(field(raw, "problem_identifier", "problemIdentifier", "identifier"), "Identifier guardrail"),
-    risk: display(field(raw, "risk_level", "riskLevel", "risk"), "Medium"),
-    status: display(field(raw, "status"), "Proposed"),
+    risk: display(field(raw, "risk_level_display", "risk_level", "riskLevel", "risk"), "Medium"),
+    status: display(field(raw, "status_display", "status"), "Proposed"),
     groups: field(raw, "duplicate_group", "duplicateGroup") ? 1 : numberValue(field(raw, "groups", "related_groups")),
-    description: display(field(raw, "proposed_ire_identifier_improvement", "proposedIreIdentifierImprovement", "description", "recommendation")),
+    description: display(field(raw, "proposed_improvement", "proposed_ire_identifier_improvement", "proposedIreIdentifierImprovement", "description", "recommendation")),
     requiresAdminReview: boolValue(field(raw, "requires_admin_review", "requiresAdminReview")),
   };
 }
@@ -222,7 +239,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
-  const payload = (await response.json()) as Envelope<T>;
+  const rawPayload = (await response.json()) as ServiceNowEnvelope<T>;
+  const payload = "result" in rawPayload ? rawPayload.result : rawPayload;
   if (!response.ok || !payload.success || payload.data === null)
     throw new Error(payload.error?.message || "Identity Guard request failed.");
   return payload.data;
@@ -231,7 +249,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const identityGuardApi = {
   summary: async () => normalizeSummary(await request("/summary")),
   runs: async (page = 1) => listFrom(await request(`/analysis/runs?page=${page}&page_size=25`)).map(normalizeRun),
-  groups: async (page = 1) => listFrom(await request(`/duplicate-groups?page=${page}&page_size=25`)).map(normalizeGroup),
+  groups: async (page = 1, analysisRunSysId = "") => {
+    const params = new URLSearchParams({ page: String(page), page_size: "25" });
+    if (analysisRunSysId) params.set("analysis_run", analysisRunSysId);
+    return listFrom(await request(`/duplicate-groups?${params.toString()}`)).map(normalizeGroup);
+  },
   group: async (sysId: string) => normalizeGroupDetail(await request(`/duplicate-groups/${encodeURIComponent(sysId)}`)),
   guardrails: async (page = 1) => listFrom(await request(`/guardrails?page=${page}&page_size=25`)).map(normalizeGuardrail),
   startAnalysis: async (name: string) => request("/analysis/start", { method: "POST", body: JSON.stringify({ name }) }),

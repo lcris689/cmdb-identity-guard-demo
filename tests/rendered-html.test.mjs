@@ -52,10 +52,18 @@ test("page uses the typed Identity Guard API with mock fallback and async UI sta
   assert.match(page, /submitDecision|identityGuardApi\.decide/);
   assert.match(page, /runStartAnalysis|identityGuardApi\.startAnalysis/);
   assert.match(page, /identityGuardApi\.group\(/);
+  assert.match(page, /Latest run/);
+  assert.match(page, /identityGuardApi\.groups\(1, latestRunSysId\)/);
+  assert.match(page, /Steward decision notes/);
+  assert.match(page, /decisionNotes/);
 
   assert.match(api, /export type IdentityGuardSummary/);
   assert.match(api, /export type DuplicateGroupDetail/);
   assert.match(api, /normalizeGroup/);
+  assert.match(api, /match_evidence/);
+  assert.match(api, /recordFromJson/);
+  assert.match(api, /analysis_run/);
+  assert.match(api, /URLSearchParams/);
   assert.match(api, /startAnalysis/);
 });
 

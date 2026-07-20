@@ -70,7 +70,8 @@ const mockSummary: IdentityGuardSummary = {
 const mockData: AppData = { summary: mockSummary, runs: mockRuns, groups: mockGroups, guardrails: mockGuardrails };
 
 function shouldUseMocks() {
-  return process.env.NEXT_PUBLIC_IDENTITY_GUARD_USE_MOCKS === "true" || process.env.NEXT_PUBLIC_USE_MOCK_DATA !== "false";
+  const configured = process.env.NEXT_PUBLIC_IDENTITY_GUARD_USE_MOCKS ?? process.env.NEXT_PUBLIC_USE_MOCK_DATA;
+  return configured !== "false";
 }
 
 function mergeGuardrails(current: IreGuardrail[], incoming: IreGuardrail[]) {
@@ -91,8 +92,9 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
 export default function Home() {
   const useMocks = shouldUseMocks();
   const [view, setView] = useState<View>("overview");
-  const [selectedId, setSelectedId] = useState(mockGroups[0]?.id || "");
+  const [selectedId, setSelectedId] = useState(useMocks ? mockGroups[0]?.id || "" : "");
   const [query, setQuery] = useState("");
+  const [decisionNotes, setDecisionNotes] = useState("");
   const [notice, setNotice] = useState("");
   const [loadState, setLoadState] = useState<LoadState>(useMocks ? "success" : "loading");
   const [error, setError] = useState("");
@@ -106,15 +108,17 @@ export default function Home() {
       setLoadState("loading");
       setError("");
       try {
-        const [summary, runs, groups, guardrails] = await Promise.all([
+        const [summary, runs, guardrails] = await Promise.all([
           identityGuardApi.summary(),
           identityGuardApi.runs(),
-          identityGuardApi.groups(),
           identityGuardApi.guardrails(),
         ]);
+        const latestRunSysId = runs[0]?.sysId || "";
+        const groups = await identityGuardApi.groups(1, latestRunSysId);
         if (cancelled) return;
         setData({ summary, runs, groups, guardrails });
         setSelectedId(groups[0]?.id || "");
+        setDecisionNotes("");
         setLoadState("success");
       } catch (loadError) {
         if (cancelled) return;
@@ -146,23 +150,27 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [selectedId, useMocks]);
 
+
   const groups = data.groups;
   const runs = data.runs;
   const guardrails = data.guardrails;
   const summary = data.summary;
   const selected = groups.find((group) => group.id === selectedId) || groups[0];
+  const currentRun = runs[0];
   const filtered = useMemo(() => groups.filter((group) => `${group.number} ${group.reason} ${group.status} ${group.aiSummary}`.toLowerCase().includes(query.toLowerCase())), [groups, query]);
   const selectedGuardrails = guardrails.filter((guardrail) => guardrail.duplicateGroup === selected?.id || guardrail.duplicateGroup === selected?.number);
 
   async function refreshData() {
     if (useMocks) return;
-    const [summary, runs, groups, guardrails] = await Promise.all([
+    const [summary, runs, guardrails] = await Promise.all([
       identityGuardApi.summary(),
       identityGuardApi.runs(),
-      identityGuardApi.groups(),
       identityGuardApi.guardrails(),
     ]);
+    const latestRunSysId = runs[0]?.sysId || "";
+    const groups = await identityGuardApi.groups(1, latestRunSysId);
     setData({ summary, runs, groups, guardrails });
+    setSelectedId(groups[0]?.id || "");
   }
 
   async function runStartAnalysis() {
@@ -190,8 +198,9 @@ export default function Home() {
       if (useMocks) {
         setNotice(`${selected.number} marked “${decision}” in mock mode. Disable mock mode to persist decisions.`);
       } else {
-        await identityGuardApi.decide(selected.id, decision, `Steward selected ${decision} from Identity Guard UI.`);
+        await identityGuardApi.decide(selected.id, decision, decisionNotes.trim() || `Steward selected ${decision} from Identity Guard UI.`);
         await refreshData();
+        setDecisionNotes("");
         setNotice(`${selected.number} decision saved to ServiceNow.`);
       }
     } catch (decisionError) {
@@ -233,11 +242,11 @@ export default function Home() {
         {view === "review" && (
           <div className="review-layout">
             <section className="queue-panel">
-              <div className="panel-head"><div><h2>Review queue</h2><p>{filtered.length} groups shown</p></div><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search groups" aria-label="Search groups" /></div>
+              <div className="panel-head"><div><h2>Review queue</h2><p>{filtered.length} groups shown · Latest run {currentRun?.number || "not available"}</p></div><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search groups" aria-label="Search groups" /></div>
               <div className="queue-list">
                 {filtered.length === 0 && <EmptyState title="No duplicate groups found." detail="Adjust your search or start a new analysis run." />}
                 {filtered.map((group) => (
-                  <button key={group.id || group.number} className={`queue-item ${selected?.id === group.id ? "selected" : ""}`} onClick={() => setSelectedId(group.id)}>
+                  <button key={group.id || group.number} className={`queue-item ${selected?.id === group.id ? "selected" : ""}`} onClick={() => { setSelectedId(group.id); setDecisionNotes(""); }}>
                     <div className="queue-line"><strong>{group.number}</strong><Status>{group.status}</Status></div>
                     <p>{group.reason}</p>
                     <div className="queue-meta"><span>{group.confidence}% confidence</span><span>{group.candidates} candidates</span>{group.oversized && <span className="warning">Oversized</span>}</div>
@@ -245,7 +254,7 @@ export default function Home() {
                 ))}
               </div>
             </section>
-            {selected ? <GroupDetail group={selected} guardrails={selectedGuardrails} decide={submitDecision} submitting={submitting} /> : <EmptyState title="No duplicate groups found." detail="Start an analysis run to populate the review queue." />}
+            {selected ? <GroupDetail group={selected} guardrails={selectedGuardrails} decide={submitDecision} submitting={submitting} decisionNotes={decisionNotes} setDecisionNotes={setDecisionNotes} /> : <EmptyState title="No duplicate groups found." detail="Start an analysis run to populate the review queue." />}
           </div>
         )}
       </section>
@@ -276,7 +285,7 @@ function Guardrails({ guardrails }: { guardrails: IreGuardrail[] }) {
   return <section className="panel full"><div className="panel-head"><div><h2>IRE guardrails</h2><p>Prevent repeated identity failures at ingestion</p></div></div>{guardrails.length === 0 ? <EmptyState title="No guardrails found." detail="Oversized data-quality clusters will create guardrail proposals." /> : guardrails.map(item => <article className="guardrail" key={item.sysId || item.number}><div className="guardrail-code">{item.number}</div><div><div className="queue-line"><strong>{item.identifier}</strong><Status>{item.status}</Status></div><p>{item.description}</p><div className="queue-meta"><span>Risk: {item.risk}</span><span>{item.groups} related group</span>{item.requiresAdminReview && <span>Admin review required</span>}</div></div><button className="secondary">Review proposal</button></article>)}</section>;
 }
 
-function GroupDetail({ group, guardrails, decide, submitting }: { group: DuplicateGroup; guardrails: IreGuardrail[]; decide: (decision: string) => void; submitting: boolean }) {
+function GroupDetail({ group, guardrails, decide, submitting, decisionNotes, setDecisionNotes }: { group: DuplicateGroup; guardrails: IreGuardrail[]; decide: (decision: string) => void; submitting: boolean; decisionNotes: string; setDecisionNotes: (notes: string) => void }) {
   return <section className="detail-panel">
     <div className="detail-title"><div><p className="eyebrow">DUPLICATE GROUP</p><h2>{group.number}</h2></div><Status>{group.status}</Status></div>
     <div className={`confidence ${group.oversized ? "confidence-warning" : ""}`}><div><span>Confidence</span><strong>{group.confidence}%</strong></div><div><span>Classification</span><strong>{group.label}</strong></div><div><span>Candidates</span><strong>{group.candidates}</strong></div></div>
@@ -285,6 +294,7 @@ function GroupDetail({ group, guardrails, decide, submitting }: { group: Duplica
     <section className="evidence-block"><h3>Candidate evidence</h3><div className="candidate-grid">{group.evidence.length === 0 ? <p>No candidate records returned for this group.</p> : group.evidence.map((candidate, index) => <article className={candidate.master ? "candidate master" : "candidate"} key={candidate.sysId || `${candidate.name}-${index}`}><div className="candidate-head"><span>Candidate {index + 1}</span>{candidate.master && <b>Recommended master</b>}</div><h4>{candidate.name}</h4><dl><div><dt>Source</dt><dd>{candidate.source}</dd></div><div><dt>Serial</dt><dd>{candidate.serial}</dd></div><div><dt>Asset</dt><dd>{candidate.assetTag}</dd></div><div><dt>Host</dt><dd>{candidate.host}</dd></div><div><dt>Quality</dt><dd>{candidate.quality}/100</dd></div></dl></article>)}</div></section>
     <section className="evidence-block"><h3>Recommended action</h3><p>{group.recommendedAction || (group.oversized ? "Quarantine the identifier value and route the records for data-quality remediation." : "Review the recommended master before steward-approved remediation.")}</p>{group.aiLimitations && <p><strong>Limitations:</strong> {group.aiLimitations}</p>}</section>
     {guardrails.length > 0 && <section className="evidence-block"><h3>Linked IRE guardrails</h3>{guardrails.map((guardrail) => <p key={guardrail.sysId || guardrail.number}><strong>{guardrail.number}</strong> · {guardrail.identifier}: {guardrail.description}</p>)}</section>}
+    <section className="evidence-block"><h3>Steward decision notes</h3><textarea className="decision-notes" value={decisionNotes} onChange={(event) => setDecisionNotes(event.target.value)} placeholder="Enter the steward rationale that should be saved to ServiceNow..." rows={3} /></section>
     <div className="decision-bar"><button className="primary" disabled={submitting} onClick={() => decide("accept")}>Accept</button><button className="secondary" disabled={submitting} onClick={() => decide("reject")}>Reject</button><button className="secondary" disabled={submitting} onClick={() => decide("defer")}>Defer</button><button className="secondary" disabled={submitting} onClick={() => decide("needs_info")}>Needs info</button></div>
   </section>;
 }
