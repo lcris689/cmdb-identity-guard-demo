@@ -285,13 +285,74 @@ function Guardrails({ guardrails }: { guardrails: IreGuardrail[] }) {
   return <section className="panel full"><div className="panel-head"><div><h2>IRE guardrails</h2><p>Prevent repeated identity failures at ingestion</p></div></div>{guardrails.length === 0 ? <EmptyState title="No guardrails found." detail="Oversized data-quality clusters will create guardrail proposals." /> : guardrails.map(item => <article className="guardrail" key={item.sysId || item.number}><div className="guardrail-code">{item.number}</div><div><div className="queue-line"><strong>{item.identifier}</strong><Status>{item.status}</Status></div><p>{item.description}</p><div className="queue-meta"><span>Risk: {item.risk}</span><span>{item.groups} related group</span>{item.requiresAdminReview && <span>Admin review required</span>}</div></div><button className="secondary">Review proposal</button></article>)}</section>;
 }
 
+type ComparisonRow = {
+  label: string;
+  values: string[];
+  finding: "Match" | "Conflict" | "Partial" | "Missing";
+};
+
+function isMissingComparisonValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return !normalized || ["—", "-", "blank", "null", "undefined", "n/a", "na"].includes(normalized);
+}
+
+function comparisonFinding(values: string[]): ComparisonRow["finding"] {
+  const present = values.filter((value) => !isMissingComparisonValue(value));
+  if (present.length === 0) return "Missing";
+  const unique = new Set(present.map((value) => value.trim().toLowerCase()));
+  if (unique.size > 1) return "Conflict";
+  if (present.length < values.length) return "Partial";
+  return "Match";
+}
+
+function CandidateComparison({ candidates }: { candidates: CandidateEvidence[] }) {
+  const row = (label: string, values: string[]): ComparisonRow => ({
+    label,
+    values,
+    finding: comparisonFinding(values),
+  });
+  const rows = [
+    row("Discovery source", candidates.map((candidate) => candidate.source)),
+    row("Serial number", candidates.map((candidate) => candidate.serial)),
+    row("Asset tag", candidates.map((candidate) => candidate.assetTag)),
+    row("Host name", candidates.map((candidate) => candidate.host)),
+    row("FQDN", candidates.map((candidate) => candidate.fqdn)),
+    row("Quality score", candidates.map((candidate) => `${candidate.quality}/100`)),
+    row("Completeness", candidates.map((candidate) => `${candidate.completeness}/100`)),
+    row("Missing fields", candidates.map((candidate) => candidate.missingFields || "None")),
+  ];
+
+  return <div className="comparison-scroll">
+    <table className="comparison-table">
+      <thead>
+        <tr>
+          <th scope="col">Field</th>
+          {candidates.map((candidate, index) => <th scope="col" key={candidate.sysId || `${candidate.name}-${index}`}>
+            <span className="candidate-label">Candidate {index + 1}</span>
+            <span className="candidate-name">{candidate.name}</span>
+            {candidate.master && <span className="master-label">Recommended master</span>}
+          </th>)}
+          <th scope="col">Finding</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((comparison) => <tr key={comparison.label}>
+          <th scope="row">{comparison.label}</th>
+          {comparison.values.map((value, index) => <td className={isMissingComparisonValue(value) ? "comparison-missing" : ""} key={`${comparison.label}-${index}`}>{value || "—"}</td>)}
+          <td><span className={`finding finding-${comparison.finding.toLowerCase()}`}>{comparison.finding}</span></td>
+        </tr>)}
+      </tbody>
+    </table>
+  </div>;
+}
+
 function GroupDetail({ group, guardrails, decide, submitting, decisionNotes, setDecisionNotes }: { group: DuplicateGroup; guardrails: IreGuardrail[]; decide: (decision: string) => void; submitting: boolean; decisionNotes: string; setDecisionNotes: (notes: string) => void }) {
   return <section className="detail-panel">
     <div className="detail-title"><div><p className="eyebrow">DUPLICATE GROUP</p><h2>{group.number}</h2></div><Status>{group.status}</Status></div>
     <div className={`confidence ${group.oversized ? "confidence-warning" : ""}`}><div><span>Confidence</span><strong>{group.confidence}%</strong></div><div><span>Classification</span><strong>{group.label}</strong></div><div><span>Candidates</span><strong>{group.candidates}</strong></div></div>
     <section className="evidence-block"><h3>Top match reason</h3><p>{group.reason}</p>{group.oversized && <div className="warning-box"><strong>Data-quality cluster</strong><p>{group.dataQualityWarning || "This common value is not reliable duplicate evidence. Do not merge automatically."}</p></div>}</section>
     {group.aiSummary && <section className="evidence-block"><h3>AI summary</h3><p>{group.aiSummary}</p></section>}
-    <section className="evidence-block"><h3>Candidate evidence</h3><div className="candidate-grid">{group.evidence.length === 0 ? <p>No candidate records returned for this group.</p> : group.evidence.map((candidate, index) => <article className={candidate.master ? "candidate master" : "candidate"} key={candidate.sysId || `${candidate.name}-${index}`}><div className="candidate-head"><span>Candidate {index + 1}</span>{candidate.master && <b>Recommended master</b>}</div><h4>{candidate.name}</h4><dl><div><dt>Source</dt><dd>{candidate.source}</dd></div><div><dt>Serial</dt><dd>{candidate.serial}</dd></div><div><dt>Asset</dt><dd>{candidate.assetTag}</dd></div><div><dt>Host</dt><dd>{candidate.host}</dd></div><div><dt>Quality</dt><dd>{candidate.quality}/100</dd></div></dl></article>)}</div></section>
+    <section className="evidence-block"><h3>Candidate evidence</h3>{group.evidence.length === 0 ? <p>No candidate records returned for this group.</p> : <CandidateComparison candidates={group.evidence} />}</section>
     <section className="evidence-block"><h3>Recommended action</h3><p>{group.recommendedAction || (group.oversized ? "Quarantine the identifier value and route the records for data-quality remediation." : "Review the recommended master before steward-approved remediation.")}</p>{group.aiLimitations && <p><strong>Limitations:</strong> {group.aiLimitations}</p>}</section>
     {guardrails.length > 0 && <section className="evidence-block"><h3>Linked IRE guardrails</h3>{guardrails.map((guardrail) => <p key={guardrail.sysId || guardrail.number}><strong>{guardrail.number}</strong> · {guardrail.identifier}: {guardrail.description}</p>)}</section>}
     <section className="evidence-block"><h3>Steward decision notes</h3><textarea className="decision-notes" value={decisionNotes} onChange={(event) => setDecisionNotes(event.target.value)} placeholder="Enter the steward rationale that should be saved to ServiceNow..." rows={3} /></section>
