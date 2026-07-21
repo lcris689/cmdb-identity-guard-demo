@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DuplicateGroup, IreGuardrail, AnalysisRun, IdentityGuardSummary, identityGuardApi } from "./lib/identity-guard-api";
+import { DuplicateGroup, IreGuardrail, AnalysisRun, IdentityGuardSummary, StewardDecisionResult, identityGuardApi } from "./lib/identity-guard-api";
 
 type View = "overview" | "runs" | "review" | "guardrails";
 type LoadState = "loading" | "success" | "error";
+type AuthState = "checking" | "authenticated" | "anonymous";
 
 type AppData = {
   summary: IdentityGuardSummary;
@@ -57,7 +58,7 @@ const mockGuardrails: IreGuardrail[] = [
 ];
 
 const mockSummary: IdentityGuardSummary = {
-  ciSourceRecords: 70,
+  ciSourceRecords: 69,
   analysisRuns: mockRuns.length,
   duplicateGroups: 9,
   duplicateCandidates: 18,
@@ -89,6 +90,80 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   return <div className="notice" role="status"><span><strong>{title}</strong> {detail}</span></div>;
 }
 
+function DecisionFeedbackPanel({ feedback, dismiss }: { feedback: DecisionFeedback; dismiss: () => void }) {
+  const remediation = feedback.result.remediation;
+  const accepted = feedback.decision === "accept";
+  const fields = remediation?.fields_enriched || [];
+
+  return <section className="decision-feedback" aria-live="polite">
+    <div className="decision-feedback-head">
+      <div><p className="eyebrow">SERVICENOW UPDATE COMPLETE</p><h2>{feedback.groupNumber} · {feedback.decision.replaceAll("_", " ")}</h2></div>
+      <button onClick={dismiss} aria-label="Dismiss decision details">×</button>
+    </div>
+    {accepted ? <>
+      <p className="decision-feedback-summary">{remediation?.summary || "The steward decision was saved and scoped remediation completed."}</p>
+      <div className="decision-feedback-grid">
+        <div><span>Master retained</span><strong>{feedback.master || remediation?.master_sys_id || "Recommended master"}</strong><small>Remains active in the source list</small></div>
+        <div><span>Duplicates hidden</span><strong>{remediation?.duplicates_hidden ?? 0}</strong><small>Preserved for audit; not deleted</small></div>
+        <div><span>Fields enriched</span><strong>{fields.length}</strong><small>{fields.length ? fields.join(", ") : "No blank master fields required enrichment"}</small></div>
+        <div><span>Audit status</span><strong>{remediation?.applied === false ? "Decision saved" : "Applied"}</strong><small>Duplicate Group remediation recorded</small></div>
+      </div>
+    </> : <>
+      <p className="decision-feedback-summary">The decision was recorded without merging or hiding any scoped source records.</p>
+      <div className="decision-feedback-grid decision-feedback-grid-compact">
+        <div><span>Remediation state</span><strong>{(remediation?.remediation_state || feedback.decision).replaceAll("_", " ")}</strong><small>Applied to candidate source records</small></div>
+        <div><span>Records updated</span><strong>{remediation?.source_records_updated ?? 0}</strong><small>All candidates remain active</small></div>
+        <div><span>Merge activity</span><strong>None</strong><small>No fields copied and no records hidden</small></div>
+      </div>
+    </>}
+  </section>;
+}
+
+function LoginScreen({ checking, onAuthenticated }: { checking: boolean; onAuthenticated: (username: string) => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/demo-auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const result = await response.json() as { success?: boolean; username?: string; error?: string };
+      if (!response.ok || !result.success) throw new Error(result.error || "Unable to sign in.");
+      setPassword("");
+      onAuthenticated(result.username || username);
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Unable to sign in.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <main className="login-shell">
+    <section className="login-panel">
+      <div className="login-banner"><span className="brand-mark">DS</span><div><p className="eyebrow">DATA SORTERS</p><h1>CMDB Identity Guard</h1></div></div>
+      <form onSubmit={submit}>
+        <h2>Demo access</h2>
+        <p>Sign in to review duplicate evidence and scoped remediation recommendations.</p>
+        <label htmlFor="demo-username">Username</label>
+        <input id="demo-username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} disabled={checking || submitting} required />
+        <label htmlFor="demo-password">Password</label>
+        <input id="demo-password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={checking || submitting} required />
+        {error && <div className="login-error" role="alert">{error}</div>}
+        <button className="primary" type="submit" disabled={checking || submitting}>{checking ? "Checking session..." : submitting ? "Signing in..." : "Enter demo"}</button>
+      </form>
+      <footer>Protected demonstration · ServiceNow credentials remain server-side</footer>
+    </section>
+  </main>;
+}
+
 export default function Home() {
   const useMocks = shouldUseMocks();
   const [view, setView] = useState<View>("overview");
@@ -96,13 +171,37 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [decisionNotes, setDecisionNotes] = useState("");
   const [notice, setNotice] = useState("");
+  const [decisionFeedback, setDecisionFeedback] = useState<DecisionFeedback | null>(null);
   const [loadState, setLoadState] = useState<LoadState>(useMocks ? "success" : "loading");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState<AppData>(mockData);
+  const [authState, setAuthState] = useState<AuthState>("checking");
+  const [authUser, setAuthUser] = useState("");
 
   useEffect(() => {
-    if (useMocks) return;
+    let cancelled = false;
+    async function checkSession() {
+      try {
+        const response = await fetch("/api/demo-auth/session", { cache: "no-store" });
+        const result = await response.json() as { authenticated?: boolean; username?: string };
+        if (cancelled) return;
+        if (response.ok && result.authenticated) {
+          setAuthUser(result.username || "Demo steward");
+          setAuthState("authenticated");
+        } else {
+          setAuthState("anonymous");
+        }
+      } catch {
+        if (!cancelled) setAuthState("anonymous");
+      }
+    }
+    checkSession();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (authState !== "authenticated" || useMocks) return;
     let cancelled = false;
     async function load() {
       setLoadState("loading");
@@ -128,10 +227,10 @@ export default function Home() {
     }
     load();
     return () => { cancelled = true; };
-  }, [useMocks]);
+  }, [authState, useMocks]);
 
   useEffect(() => {
-    if (useMocks || !selectedId) return;
+    if (authState !== "authenticated" || useMocks || !selectedId) return;
     let cancelled = false;
     async function loadSelectedDetail() {
       try {
@@ -148,7 +247,7 @@ export default function Home() {
     }
     loadSelectedDetail();
     return () => { cancelled = true; };
-  }, [selectedId, useMocks]);
+  }, [authState, selectedId, useMocks]);
 
 
   const groups = data.groups;
@@ -196,12 +295,23 @@ export default function Home() {
     setSubmitting(true);
     try {
       if (useMocks) {
+        setDecisionFeedback({
+          groupNumber: selected.number,
+          decision,
+          master: selected.recommendedMaster,
+          result: {
+            remediation: decision === "accept"
+              ? { applied: true, duplicates_hidden: Math.max(0, selected.evidence.length - 1), fields_enriched: ["fqdn"], summary: "Mock scoped remediation completed." }
+              : { applied: false, decision, remediation_state: decision === "needs_info" ? "needs_info" : decision === "reject" ? "rejected" : "deferred", source_records_updated: selected.evidence.length },
+          },
+        });
         setNotice(`${selected.number} marked “${decision}” in mock mode. Disable mock mode to persist decisions.`);
       } else {
-        await identityGuardApi.decide(selected.id, decision, decisionNotes.trim() || `Steward selected ${decision} from Identity Guard UI.`);
+        const result = await identityGuardApi.decide(selected.id, decision, decisionNotes.trim() || `Steward selected ${decision} from Identity Guard UI.`);
+        setDecisionFeedback({ groupNumber: selected.number, decision, master: selected.recommendedMaster, result });
         await refreshData();
         setDecisionNotes("");
-        setNotice(`${selected.number} decision saved to ServiceNow.`);
+        setNotice(`${selected.number} decision and remediation response received from ServiceNow.`);
       }
     } catch (decisionError) {
       setNotice(decisionError instanceof Error ? decisionError.message : "Unable to save steward decision.");
@@ -210,6 +320,17 @@ export default function Home() {
       window.setTimeout(() => setNotice(""), 6000);
     }
   }
+
+  async function signOut() {
+    await fetch("/api/demo-auth/logout", { method: "POST" });
+    setDecisionFeedback(null);
+    setNotice("");
+    setAuthUser("");
+    setAuthState("anonymous");
+  }
+
+  if (authState !== "authenticated")
+    return <LoginScreen checking={authState === "checking"} onAuthenticated={(username) => { setAuthUser(username); setAuthState("authenticated"); }} />;
 
   return (
     <main className="shell">
@@ -229,10 +350,11 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Data Sorters / CMDB Identity Guard</p><h1>{view === "review" ? "Duplicate review" : view[0].toUpperCase() + view.slice(1)}</h1></div>
-          <button className="primary" onClick={runStartAnalysis} disabled={submitting}>{submitting ? "Working..." : "Start analysis"}</button>
+          <div className="topbar-actions"><span>Signed in as {authUser}</span><button className="secondary" onClick={signOut}>Sign out</button><button className="primary" onClick={runStartAnalysis} disabled={submitting}>{submitting ? "Working..." : "Start analysis"}</button></div>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
+        {decisionFeedback && <DecisionFeedbackPanel feedback={decisionFeedback} dismiss={() => setDecisionFeedback(null)} />}
         {loadState === "loading" && <div className="notice" role="status">Loading ServiceNow data from Identity Guard API...</div>}
         {loadState === "error" && <div className="notice" role="alert">Unable to load ServiceNow data. {error}</div>}
 
@@ -268,7 +390,7 @@ function Overview({ summary, groups, runs, setView }: { summary: IdentityGuardSu
   return <div className="stack">
     <section className="hero-band"><div><p className="eyebrow">LATEST RUN · {latestRun?.number || "No run yet"}</p><h2>Identity risk, made reviewable.</h2><p>{summary.ciSourceRecords} scoped source records scanned. {summary.duplicateGroups} groups require steward attention before identity evidence can be trusted.</p></div><button onClick={() => setView("review")}>Open review queue →</button></section>
     <section className="metrics">
-      {[ [String(summary.ciSourceRecords), "Records scanned", "Scoped CI Source"], [String(summary.duplicateGroups), "Duplicate groups", `${summary.aiReviewedGroups} AI reviewed`], [String(summary.guardrails), "Guardrails", "Admin review required"], [String(summary.oversizedClusters), "Noisy identifiers", "Quarantined from matching"] ].map(([value, label, note]) => <article key={label}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>)}
+      {[ [String(summary.ciSourceRecords), "Active records scanned", "Scoped CI Source"], [String(summary.duplicateGroups), "Duplicate groups", `${summary.aiReviewedGroups} AI reviewed`], [String(summary.guardrails), "Guardrails", "Admin review required"], [String(summary.oversizedClusters), "Noisy identifiers", "Quarantined from matching"] ].map(([value, label, note]) => <article key={label}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>)}
     </section>
     <div className="two-col">
       <section className="panel"><div className="panel-head"><div><h2>Priority review</h2><p>Ranked by identity risk and confidence</p></div><button className="text-button" onClick={() => setView("review")}>View all</button></div>{groups.length === 0 ? <EmptyState title="No duplicate groups found." detail="Start an analysis to populate this queue." /> : groups.slice(0, 3).map(group => <div className="compact-row" key={group.id || group.number}><div><strong>{group.number}</strong><p>{group.reason}</p></div><div className="row-right"><span className="score">{group.confidence}</span><Status>{group.status}</Status></div></div>)}</section>
@@ -289,6 +411,13 @@ type ComparisonRow = {
   label: string;
   values: string[];
   finding: "Match" | "Conflict" | "Partial" | "Missing";
+};
+
+type DecisionFeedback = {
+  groupNumber: string;
+  decision: string;
+  master: string;
+  result: StewardDecisionResult;
 };
 
 function isMissingComparisonValue(value: string) {

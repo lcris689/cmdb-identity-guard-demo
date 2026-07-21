@@ -82,6 +82,23 @@ export type DuplicateGroupDetail = {
   guardrails: IreGuardrail[];
 };
 
+export type StewardRemediation = {
+  applied?: boolean;
+  decision?: string;
+  remediation_state?: string;
+  group_sys_id?: string;
+  master_sys_id?: string;
+  duplicates_hidden?: number;
+  fields_enriched?: string[];
+  source_records_updated?: number;
+  summary?: string;
+};
+
+export type StewardDecisionResult = {
+  group?: unknown;
+  remediation?: StewardRemediation;
+};
+
 function isRecord(value: unknown): value is UnknownRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -257,7 +274,7 @@ export const identityGuardApi = {
   group: async (sysId: string) => normalizeGroupDetail(await request(`/duplicate-groups/${encodeURIComponent(sysId)}`)),
   guardrails: async (page = 1) => listFrom(await request(`/guardrails?page=${page}&page_size=25`)).map(normalizeGuardrail),
   startAnalysis: async (name: string) => request("/analysis/start", { method: "POST", body: JSON.stringify({ name }) }),
-  decide: async (sysId: string, decision: string, notes: string) => request(
+  decide: async (sysId: string, decision: string, notes: string) => request<StewardDecisionResult>(
     `/duplicate-groups/${encodeURIComponent(sysId)}/decision`,
     { method: "POST", body: JSON.stringify({ decision, notes }) },
   ),

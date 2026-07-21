@@ -1,3 +1,5 @@
+import { getDemoSession } from "../../../lib/demo-auth";
+
 const DEFAULT_SERVICENOW_PATH = "/api/x_kest_data_sort/data_sorters_identity_guard_api";
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -55,6 +57,12 @@ function responseHeaders(source: Headers) {
 
 async function proxy(request: Request, context: RouteContext) {
   try {
+    if (!(await getDemoSession(request))) {
+      return Response.json(
+        { success: false, data: null, error: { code: "DEMO_AUTH_REQUIRED", message: "Demo sign-in is required." } },
+        { status: 401, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const config = getServiceNowConfig();
     const sourceUrl = new URL(request.url);
     const relativePath = await routePath(context);

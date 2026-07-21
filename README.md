@@ -28,6 +28,16 @@ npm run dev
 
 Copy `.env.example` to `.env.local`.
 
+Configure the server-side demo access gate. Use a unique password for the demonstration and a random session secret containing at least 32 characters:
+
+```env
+DEMO_ACCESS_USERNAME=user
+DEMO_ACCESS_PASSWORD=123
+DEMO_SESSION_SECRET=11111111111111111111111111111111
+```
+
+The login creates a four-hour HTTP-only, same-site signed session cookie. The ServiceNow proxy rejects requests that do not have a valid demo session. Never commit the real values.
+
 Keep the browser-facing API base pointed at the included same-origin proxy:
 
 ```env
