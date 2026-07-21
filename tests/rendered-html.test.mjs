@@ -23,19 +23,17 @@ async function render() {
   );
 }
 
-test("server-renders the Identity Guard shell with mock fallback content", async () => {
+test("server-renders the Identity Guard protected demo login", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Data Sorters CMDB Identity Guard<\/title>/i);
-  assert.match(html, /Identity Guard/);
-  assert.match(html, /CMDB governance/);
-  assert.match(html, /Start analysis/);
-  assert.match(html, /Review queue/);
-  assert.match(html, /Guardrails/);
-  assert.match(html, /DATA_SORTERS scope/);
+  assert.match(html, /CMDB Identity Guard/);
+  assert.match(html, /Demo access/);
+  assert.match(html, /Sign in to review duplicate evidence/);
+  assert.match(html, /ServiceNow credentials remain server-side/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
 });
 
