@@ -54,6 +54,8 @@ test("page uses the typed Identity Guard API with mock fallback and async UI sta
   assert.match(page, /identityGuardApi\.groups\(1, latestRunSysId\)/);
   assert.match(page, /Steward decision notes/);
   assert.match(page, /decisionNotes/);
+  assert.match(page, /stewardFacingAction/);
+  assert.match(page, /master record\\s\+\(\[0-9a-f\]\{32\}\)\\s\+as valid/);
 
   assert.match(api, /export type IdentityGuardSummary/);
   assert.match(api, /export type DuplicateGroupDetail/);

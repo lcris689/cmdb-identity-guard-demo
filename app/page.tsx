@@ -475,14 +475,34 @@ function CandidateComparison({ candidates }: { candidates: CandidateEvidence[] }
   </div>;
 }
 
+function isServiceNowSysId(value: string) {
+  return /^[0-9a-f]{32}$/i.test(value.trim());
+}
+
+function readableMasterName(group: DuplicateGroup) {
+  const candidateMaster = group.evidence.find((candidate) => candidate.master)?.name;
+  if (group.recommendedMaster && !isServiceNowSysId(group.recommendedMaster)) return group.recommendedMaster;
+  return candidateMaster || "the recommended master";
+}
+
+function stewardFacingAction(group: DuplicateGroup) {
+  const fallback = group.oversized ? "Quarantine the identifier value and route the records for data-quality remediation." : "Review the recommended master before steward-approved remediation.";
+  const action = group.recommendedAction || fallback;
+  const masterName = readableMasterName(group);
+  return action
+    .replace(/master record\s+([0-9a-f]{32})\s+as valid/gi, `${masterName} as the master record`)
+    .replace(/\b[0-9a-f]{32}\b/gi, masterName);
+}
+
 function GroupDetail({ group, guardrails, decide, submitting, decisionNotes, setDecisionNotes }: { group: DuplicateGroup; guardrails: IreGuardrail[]; decide: (decision: string) => void; submitting: boolean; decisionNotes: string; setDecisionNotes: (notes: string) => void }) {
+  const action = stewardFacingAction(group);
   return <section className="detail-panel">
     <div className="detail-title"><div><p className="eyebrow">DUPLICATE GROUP</p><h2>{group.number}</h2></div><Status>{group.status}</Status></div>
     <div className={`confidence ${group.oversized ? "confidence-warning" : ""}`}><div><span>Confidence</span><strong>{group.confidence}%</strong></div><div><span>Classification</span><strong>{group.label}</strong></div><div><span>Candidates</span><strong>{group.candidates}</strong></div></div>
     <section className="evidence-block"><h3>Top match reason</h3><p>{group.reason}</p>{group.oversized && <div className="warning-box"><strong>Data-quality cluster</strong><p>{group.dataQualityWarning || "This common value is not reliable duplicate evidence. Do not merge automatically."}</p></div>}</section>
     {group.aiSummary && <section className="evidence-block"><h3>AI summary</h3><p>{group.aiSummary}</p></section>}
     <section className="evidence-block"><h3>Candidate evidence</h3>{group.evidence.length === 0 ? <p>No candidate records returned for this group.</p> : <CandidateComparison candidates={group.evidence} />}</section>
-    <section className="evidence-block"><h3>Recommended action</h3><p>{group.recommendedAction || (group.oversized ? "Quarantine the identifier value and route the records for data-quality remediation." : "Review the recommended master before steward-approved remediation.")}</p>{group.aiLimitations && <p><strong>Limitations:</strong> {group.aiLimitations}</p>}</section>
+    <section className="evidence-block"><h3>Recommended action</h3><p>{action}</p>{group.aiLimitations && <p><strong>Limitations:</strong> {group.aiLimitations}</p>}</section>
     {guardrails.length > 0 && <section className="evidence-block"><h3>Linked IRE guardrails</h3>{guardrails.map((guardrail) => <p key={guardrail.sysId || guardrail.number}><strong>{guardrail.number}</strong> · {guardrail.identifier}: {guardrail.description}</p>)}</section>}
     <section className="evidence-block"><h3>Steward decision notes</h3><textarea className="decision-notes" value={decisionNotes} onChange={(event) => setDecisionNotes(event.target.value)} placeholder="Enter the steward rationale that should be saved to ServiceNow..." rows={3} /></section>
     <div className="decision-bar"><button className="primary" disabled={submitting} onClick={() => decide("accept")}>Accept</button><button className="secondary" disabled={submitting} onClick={() => decide("reject")}>Reject</button><button className="secondary" disabled={submitting} onClick={() => decide("defer")}>Defer</button><button className="secondary" disabled={submitting} onClick={() => decide("needs_info")}>Needs info</button></div>
