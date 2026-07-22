@@ -41,6 +41,11 @@ export type CandidateEvidence = {
   assetTag: string;
   host: string;
   fqdn: string;
+  ciClass?: string;
+  lastDiscovered?: string;
+  owner?: string;
+  lifecycleStatus?: string;
+  relationshipCount?: string;
   quality: number;
   completeness: number;
   missingFields: string;
@@ -198,6 +203,11 @@ export function normalizeCandidate(raw: unknown): CandidateEvidence {
     assetTag: display(field(raw, "asset_tag", "assetTag") || field(source, "asset_tag", "assetTag")),
     host: display(field(raw, "host_name", "host", "hostname") || field(source, "host_name", "host", "hostname")),
     fqdn: display(field(raw, "fqdn") || field(source, "fqdn")),
+    ciClass: display(field(raw, "ci_class_snapshot", "ci_class", "ciClass", "sys_class_name") || field(source, "ci_class", "ciClass", "sys_class_name", "class_name"), "—"),
+    lastDiscovered: display(field(raw, "last_discovered", "lastDiscovered") || field(source, "last_discovered", "lastDiscovered"), "—"),
+    owner: display(field(raw, "owner", "owned_by", "ownedBy") || field(source, "owner", "owned_by", "ownedBy"), "—"),
+    lifecycleStatus: display(field(raw, "lifecycle_status", "lifecycleStatus", "operational_status", "operationalStatus") || field(source, "lifecycle_status", "lifecycleStatus", "operational_status", "operationalStatus"), "—"),
+    relationshipCount: display(field(raw, "relationship_count", "relationshipCount") || field(source, "relationship_count", "relationshipCount"), "—"),
     quality: numberValue(field(raw, "source_quality_score", "sourceQualityScore", "quality")),
     completeness: numberValue(field(raw, "completeness_score", "completenessScore")),
     missingFields: display(field(raw, "missing_fields", "missingFields"), ""),
