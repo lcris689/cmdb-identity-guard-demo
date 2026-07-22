@@ -441,11 +441,16 @@ function CandidateComparison({ candidates }: { candidates: CandidateEvidence[] }
     finding: comparisonFinding(values),
   });
   const rows = [
+    row("CI class", candidates.map((candidate) => candidate.ciClass || "—")),
     row("Discovery source", candidates.map((candidate) => candidate.source)),
     row("Serial number", candidates.map((candidate) => candidate.serial)),
     row("Asset tag", candidates.map((candidate) => candidate.assetTag)),
     row("Host name", candidates.map((candidate) => candidate.host)),
     row("FQDN", candidates.map((candidate) => candidate.fqdn)),
+    row("Last discovered", candidates.map((candidate) => candidate.lastDiscovered || "—")),
+    row("Owner", candidates.map((candidate) => candidate.owner || "—")),
+    row("Lifecycle status", candidates.map((candidate) => candidate.lifecycleStatus || "—")),
+    row("Relationship count", candidates.map((candidate) => candidate.relationshipCount || "—")),
     row("Quality score", candidates.map((candidate) => `${candidate.quality}/100`)),
     row("Completeness", candidates.map((candidate) => `${candidate.completeness}/100`)),
     row("Missing fields", candidates.map((candidate) => candidate.missingFields || "None")),
