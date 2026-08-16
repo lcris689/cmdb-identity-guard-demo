@@ -23,7 +23,7 @@ async function render() {
   );
 }
 
-test("server-renders the Identity Guard protected demo login", async () => {
+test("server-renders an immediately usable offline Identity Guard demo", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -31,10 +31,28 @@ test("server-renders the Identity Guard protected demo login", async () => {
   const html = await response.text();
   assert.match(html, /<title>Data Sorters CMDB Identity Guard<\/title>/i);
   assert.match(html, /CMDB Identity Guard/);
-  assert.match(html, /Demo access/);
-  assert.match(html, /Sign in to review duplicate evidence/);
-  assert.match(html, /ServiceNow credentials remain server-side/);
+  assert.match(html, /Offline demo/);
+  assert.match(html, /Identity risk, made reviewable/);
+  assert.doesNotMatch(html, /Demo access/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
+});
+
+test("offline mode is explicit and keeps live ServiceNow access opt-in", async () => {
+  const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(envExample, /NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO=true/);
+  assert.match(page, /NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO/);
+  assert.match(page, /Offline demo · synthetic data only/);
+});
+
+test("offline interactions never imply that live CMDB records were changed", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /Synthetic data for offline demonstration/);
+  assert.match(page, /No CMDB records were changed/);
+  assert.match(page, /SIMULATED STEWARD DECISION/);
+  assert.doesNotMatch(page, /Disable mock mode/);
 });
 
 test("page uses the typed Identity Guard API with mock fallback and async UI states", async () => {

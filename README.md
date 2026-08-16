@@ -1,21 +1,10 @@
-# Data Sorters CMDB Identity Guard UI
+# CMDB Identity Guard Offline Demo
 
-Minimal, square-edged steward experience for the Data Sorters ServiceNow hackathon project.
+A portfolio-ready, no-credentials continuation of the Data Sorters ServiceNow hackathon UI. The application gives CMDB data stewards an explainable workflow for reviewing possible duplicate Configuration Items, comparing candidate evidence, recording simulated decisions, and examining proposed IRE guardrails.
 
-## Included
+## Offline demo
 
-- Overview and identity-health metrics
-- Analysis run history
-- Duplicate review queue
-- Candidate evidence comparison
-- IRE guardrail proposals
-- Steward decision controls
-- Responsive layouts
-- Mock records for development and demo fallback
-- A typed ServiceNow API adapter in `app/lib/identity-guard-api.ts`
-- A same-origin server-side proxy at `/api/identity-guard/*`
-
-## Local development
+The default configuration opens directly into synthetic demo data. It does not require a ServiceNow instance, account, API key, database, or network request after dependencies are installed.
 
 Requirements: Node.js 22.13 or later.
 
@@ -24,51 +13,31 @@ npm install
 npm run dev
 ```
 
-## API integration
+Then open the local URL printed by Vinext. Use **Start analysis**, **Review queue**, and the steward decision controls to exercise the simulated workflow. Every offline decision is explicitly labeled as simulated and does not modify CMDB records.
 
-Copy `.env.example` to `.env.local`.
+## Included
 
-Configure the server-side demo access gate. Use a unique password for the demonstration and a random session secret containing at least 32 characters:
+- Identity-health overview and analysis run history
+- Ranked duplicate review queue
+- Side-by-side candidate evidence comparison
+- Explainable AI summaries and master-record recommendations
+- Steward decision controls with simulated remediation feedback
+- Proposed IRE guardrails for unsafe identifiers
+- Responsive desktop and mobile layouts
+- Typed ServiceNow API adapter in `app/lib/identity-guard-api.ts`
+- Optional same-origin ServiceNow proxy at `/api/identity-guard/*`
 
-```env
-DEMO_ACCESS_USERNAME=user
-DEMO_ACCESS_PASSWORD=123
-DEMO_SESSION_SECRET=11111111111111111111111111111111
-```
+## Runtime modes
 
-The login creates a four-hour HTTP-only, same-site signed session cookie. The ServiceNow proxy rejects requests that do not have a valid demo session. Never commit the real values.
+| Mode | Offline demo | Mock data | Authentication | ServiceNow access |
+| --- | --- | --- | --- | --- |
+| Portfolio demo (default) | `true` | `true` | Not required | None |
+| Protected UI demo | `false` | `true` | Demo access gate | None |
+| Live integration | `false` | `false` | Demo access gate | Server-side proxy |
 
-Keep the browser-facing API base pointed at the included same-origin proxy:
+Copy `.env.example` to `.env.local` only when changing modes. To use the protected or live modes, set `NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO=false` and configure the demo-access values. Live ServiceNow values must remain server-side; never prefix credentials with `NEXT_PUBLIC_` and never commit `.env.local`.
 
-```env
-NEXT_PUBLIC_IDENTITY_GUARD_API_BASE=/api/identity-guard
-```
-
-Keep mock mode enabled for safe UI-only demos:
-
-```env
-NEXT_PUBLIC_IDENTITY_GUARD_USE_MOCKS=true
-```
-
-Set mock mode to false when the server-side ServiceNow proxy is configured:
-
-```env
-NEXT_PUBLIC_IDENTITY_GUARD_USE_MOCKS=false
-```
-
-Server-side ServiceNow configuration belongs only in `.env.local` or deployment secrets. Do not prefix credentials with `NEXT_PUBLIC_` and do not commit them.
-
-```env
-SERVICENOW_INSTANCE_URL=https://YOUR_INSTANCE.service-now.com
-SERVICENOW_IDENTITY_GUARD_PATH=/api/x_kest_data_sort/data_sorters_identity_guard_api
-SERVICENOW_BEARER_TOKEN=
-SERVICENOW_USERNAME=data.sorters.api
-SERVICENOW_PASSWORD=
-```
-
-Use either `SERVICENOW_BEARER_TOKEN` or `SERVICENOW_USERNAME` plus `SERVICENOW_PASSWORD`.
-
-The UI calls these same-origin proxy routes:
+The optional proxy supports:
 
 ```text
 GET  /api/identity-guard/summary
@@ -80,12 +49,6 @@ POST /api/identity-guard/duplicate-groups/{sys_id}/decision
 POST /api/identity-guard/analysis/start
 ```
 
-The proxy forwards to the Data Sorters scoped ServiceNow API base path:
+## Project origin and attribution
 
-```text
-/api/x_kest_data_sort/data_sorters_identity_guard_api
-```
-
-## GitHub
-
-This directory is initialized from `https://github.com/Phire12/Hackathon_Data_Sorters_UI`.
+This repository is a separate continuation of the original [Data Sorters hackathon repository](https://github.com/Phire12/Hackathon_Data_Sorters_UI). It preserves the original Git history and contributor attribution while allowing the offline portfolio demo to evolve without changing the competition project.

@@ -23,21 +23,21 @@ const mockRuns: AnalysisRun[] = [
 const mockGroups: DuplicateGroup[] = [
   {
     id: "mock-1", number: "DCG0001009", reason: "Serial Number = SN-AZ-44018", confidence: 94, label: "Very likely",
-    candidates: 2, status: "New", oversized: false, dataQualityWarning: "", aiSummary: "Two CI Source records share strong serial-number evidence and need steward review.", aiLimitations: "Mock data shown until ServiceNow API mode is enabled.", recommendedAction: "Steward should verify the recommended master before remediation.", recommendedMaster: "DATA_SORTERS-PHX-WEB-04", evidence: [
+    candidates: 2, status: "New", oversized: false, dataQualityWarning: "", aiSummary: "Two CI Source records share strong serial-number evidence and need steward review.", aiLimitations: "Synthetic data for offline demonstration; no live CMDB records are accessed.", recommendedAction: "Steward should verify the recommended master before remediation.", recommendedMaster: "DATA_SORTERS-PHX-WEB-04", evidence: [
       { sysId: "mock-ci-1", name: "DATA_SORTERS-PHX-WEB-04", source: "ServiceNow Discovery", serial: "SN-AZ-44018", assetTag: "DS-AT-44018", host: "phx-web-04", fqdn: "phx-web-04.datasorters.example.com", quality: 92, completeness: 94, missingFields: "", master: true },
       { sysId: "mock-ci-2", name: "DATA_SORTERS-WEB04-OLD", source: "CSV Import", serial: "SN-AZ-44018", assetTag: "DS-AT-44018", host: "web04", fqdn: "", quality: 61, completeness: 68, missingFields: "FQDN", master: false },
     ],
   },
   {
     id: "mock-2", number: "DCG0001008", reason: "FQDN = db-02.datasorters.internal", confidence: 87, label: "Likely",
-    candidates: 2, status: "AI Reviewed", oversized: false, dataQualityWarning: "", aiSummary: "The records share FQDN evidence but need steward approval before any remediation.", aiLimitations: "Mock data shown until ServiceNow API mode is enabled.", recommendedAction: "Review the master recommendation and confirm ownership before accepting.", recommendedMaster: "DATA_SORTERS-DB-02", evidence: [
+    candidates: 2, status: "AI Reviewed", oversized: false, dataQualityWarning: "", aiSummary: "The records share FQDN evidence but need steward approval before any remediation.", aiLimitations: "Synthetic data for offline demonstration; no live CMDB records are accessed.", recommendedAction: "Review the master recommendation and confirm ownership before accepting.", recommendedMaster: "DATA_SORTERS-DB-02", evidence: [
       { sysId: "mock-ci-3", name: "DATA_SORTERS-DB-02", source: "ServiceNow Discovery", serial: "SN-DB-9021", assetTag: "DS-DB-02", host: "db-02", fqdn: "db-02.datasorters.internal", quality: 88, completeness: 91, missingFields: "", master: true },
       { sysId: "mock-ci-4", name: "DATA_SORTERS-DATABASE-02", source: "Manual Entry", serial: "—", assetTag: "DS-DB-02", host: "db-02", fqdn: "db-02.datasorters.internal", quality: 52, completeness: 59, missingFields: "Serial Number", master: false },
     ],
   },
   {
     id: "mock-3", number: "DCG0001007", reason: "Common bad identifier: Serial Number = unknown", confidence: 20, label: "Low",
-    candidates: 12, status: "Needs Review", oversized: true, dataQualityWarning: "Serial Number = unknown is a common placeholder and not safe duplicate evidence.", aiSummary: "This is a data-quality cluster, not a safe duplicate group.", aiLimitations: "Mock data summarizes a noisy cluster with sample records only.", recommendedAction: "Quarantine this identifier and correct source records before CMDB identification.", recommendedMaster: "", evidence: [
+    candidates: 12, status: "Needs Review", oversized: true, dataQualityWarning: "Serial Number = unknown is a common placeholder and not safe duplicate evidence.", aiSummary: "This is a data-quality cluster, not a safe duplicate group.", aiLimitations: "Synthetic data for offline demonstration; this noisy cluster contains sample records only.", recommendedAction: "Quarantine this identifier and correct source records before CMDB identification.", recommendedMaster: "", evidence: [
       { sysId: "mock-ci-5", name: "DATA_SORTERS-NET-01", source: "CSV Import", serial: "unknown", assetTag: "DATA_SORTERS", host: "net-01", fqdn: "", quality: 43, completeness: 48, missingFields: "Serial Number", master: false },
       { sysId: "mock-ci-6", name: "DATA_SORTERS-NET-02", source: "CSV Import", serial: "unknown", assetTag: "DATA_SORTERS", host: "net-02", fqdn: "", quality: 41, completeness: 45, missingFields: "Serial Number", master: false },
       { sysId: "mock-ci-7", name: "+10 additional records", source: "Data-quality cluster", serial: "unknown", assetTag: "DATA_SORTERS", host: "varied", fqdn: "", quality: 31, completeness: 36, missingFields: "Reliable Identifier", master: false },
@@ -45,7 +45,7 @@ const mockGroups: DuplicateGroup[] = [
   },
   {
     id: "mock-4", number: "DCG0001006", reason: "Asset Tag = DS-8843", confidence: 76, label: "Likely",
-    candidates: 3, status: "New", oversized: false, dataQualityWarning: "", aiSummary: "Asset-tag and serial-number evidence suggest a likely duplicate candidate group.", aiLimitations: "Mock data shown until ServiceNow API mode is enabled.", recommendedAction: "Steward should verify ownership before approving remediation.", recommendedMaster: "DATA_SORTERS-LAPTOP-18", evidence: [
+    candidates: 3, status: "New", oversized: false, dataQualityWarning: "", aiSummary: "Asset-tag and serial-number evidence suggest a likely duplicate candidate group.", aiLimitations: "Synthetic data for offline demonstration; no live CMDB records are accessed.", recommendedAction: "Steward should verify ownership before approving remediation.", recommendedMaster: "DATA_SORTERS-LAPTOP-18", evidence: [
       { sysId: "mock-ci-8", name: "DATA_SORTERS-LAPTOP-18", source: "Asset Import", serial: "LTP-22104", assetTag: "DS-8843", host: "ds-lt-18", fqdn: "", quality: 84, completeness: 88, missingFields: "", master: true },
       { sysId: "mock-ci-9", name: "DATA_SORTERS-LT-18", source: "Manual Entry", serial: "LTP-22104", assetTag: "DS-8843", host: "—", fqdn: "", quality: 57, completeness: 62, missingFields: "Host Name", master: false },
     ],
@@ -75,6 +75,10 @@ function shouldUseMocks() {
   return configured !== "false";
 }
 
+function shouldUseOfflineDemo() {
+  return process.env.NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO !== "false";
+}
+
 function mergeGuardrails(current: IreGuardrail[], incoming: IreGuardrail[]) {
   const merged = new Map<string, IreGuardrail>();
   for (const guardrail of current) merged.set(guardrail.sysId || guardrail.number, guardrail);
@@ -90,14 +94,14 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   return <div className="notice" role="status"><span><strong>{title}</strong> {detail}</span></div>;
 }
 
-function DecisionFeedbackPanel({ feedback, dismiss }: { feedback: DecisionFeedback; dismiss: () => void }) {
+function DecisionFeedbackPanel({ feedback, dismiss, simulated }: { feedback: DecisionFeedback; dismiss: () => void; simulated: boolean }) {
   const remediation = feedback.result.remediation;
   const accepted = feedback.decision === "accept";
   const fields = remediation?.fields_enriched || [];
 
   return <section className="decision-feedback" aria-live="polite">
     <div className="decision-feedback-head">
-      <div><p className="eyebrow">SERVICENOW UPDATE COMPLETE</p><h2>{feedback.groupNumber} · {feedback.decision.replaceAll("_", " ")}</h2></div>
+      <div><p className="eyebrow">{simulated ? "SIMULATED STEWARD DECISION" : "SERVICENOW UPDATE COMPLETE"}</p><h2>{feedback.groupNumber} · {feedback.decision.replaceAll("_", " ")}</h2></div>
       <button onClick={dismiss} aria-label="Dismiss decision details">×</button>
     </div>
     {accepted ? <>
@@ -165,6 +169,7 @@ function LoginScreen({ checking, onAuthenticated }: { checking: boolean; onAuthe
 }
 
 export default function Home() {
+  const offlineDemo = shouldUseOfflineDemo();
   const useMocks = shouldUseMocks();
   const [view, setView] = useState<View>("overview");
   const [selectedId, setSelectedId] = useState(useMocks ? mockGroups[0]?.id || "" : "");
@@ -176,10 +181,11 @@ export default function Home() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState<AppData>(mockData);
-  const [authState, setAuthState] = useState<AuthState>("checking");
-  const [authUser, setAuthUser] = useState("");
+  const [authState, setAuthState] = useState<AuthState>(offlineDemo ? "authenticated" : "checking");
+  const [authUser, setAuthUser] = useState(offlineDemo ? "Offline demo steward" : "");
 
   useEffect(() => {
+    if (offlineDemo) return;
     let cancelled = false;
     async function checkSession() {
       try {
@@ -198,7 +204,7 @@ export default function Home() {
     }
     checkSession();
     return () => { cancelled = true; };
-  }, []);
+  }, [offlineDemo]);
 
   useEffect(() => {
     if (authState !== "authenticated" || useMocks) return;
@@ -276,7 +282,7 @@ export default function Home() {
     setSubmitting(true);
     try {
       if (useMocks) {
-        setNotice("Mock analysis request queued. Disable mock mode to start the ServiceNow analyzer.");
+        setNotice("Offline analysis simulation complete. 69 synthetic CIs scanned; 9 review groups available.");
       } else {
         await identityGuardApi.startAnalysis(`External UI scan ${new Date().toLocaleString()}`);
         await refreshData();
@@ -301,11 +307,11 @@ export default function Home() {
           master: selected.recommendedMaster,
           result: {
             remediation: decision === "accept"
-              ? { applied: true, duplicates_hidden: Math.max(0, selected.evidence.length - 1), fields_enriched: ["fqdn"], summary: "Mock scoped remediation completed." }
+              ? { applied: true, duplicates_hidden: Math.max(0, selected.evidence.length - 1), fields_enriched: ["fqdn"], summary: "Simulated scoped remediation completed. No CMDB records were changed." }
               : { applied: false, decision, remediation_state: decision === "needs_info" ? "needs_info" : decision === "reject" ? "rejected" : "deferred", source_records_updated: selected.evidence.length },
           },
         });
-        setNotice(`${selected.number} marked “${decision}” in mock mode. Disable mock mode to persist decisions.`);
+        setNotice(`${selected.number} marked “${decision}” in the offline demo. No CMDB records were changed.`);
       } else {
         const result = await identityGuardApi.decide(selected.id, decision, decisionNotes.trim() || `Steward selected ${decision} from Identity Guard UI.`);
         setDecisionFeedback({ groupNumber: selected.number, decision, master: selected.recommendedMaster, result });
@@ -344,17 +350,17 @@ export default function Home() {
             </button>
           ))}
         </nav>
-        <div className="rail-foot"><span className="connection-dot" />{useMocks ? "Mock mode" : "ServiceNow connected"}<small>DATA_SORTERS scope</small></div>
+        <div className="rail-foot"><span className="connection-dot" />{offlineDemo ? "Offline demo" : useMocks ? "Mock mode" : "ServiceNow connected"}<small>{offlineDemo ? "SYNTHETIC DATA" : "DATA_SORTERS scope"}</small></div>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Data Sorters / CMDB Identity Guard</p><h1>{view === "review" ? "Duplicate review" : view[0].toUpperCase() + view.slice(1)}</h1></div>
-          <div className="topbar-actions"><span>Signed in as {authUser}</span><button className="secondary" onClick={signOut}>Sign out</button><button className="primary" onClick={runStartAnalysis} disabled={submitting}>{submitting ? "Working..." : "Start analysis"}</button></div>
+          <div className="topbar-actions"><span>{offlineDemo ? "Offline demo · synthetic data only" : `Signed in as ${authUser}`}</span>{!offlineDemo && <button className="secondary" onClick={signOut}>Sign out</button>}<button className="primary" onClick={runStartAnalysis} disabled={submitting}>{submitting ? "Working..." : "Start analysis"}</button></div>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
-        {decisionFeedback && <DecisionFeedbackPanel feedback={decisionFeedback} dismiss={() => setDecisionFeedback(null)} />}
+        {decisionFeedback && <DecisionFeedbackPanel feedback={decisionFeedback} dismiss={() => setDecisionFeedback(null)} simulated={useMocks} />}
         {loadState === "loading" && <div className="notice" role="status">Loading ServiceNow data from Identity Guard API...</div>}
         {loadState === "error" && <div className="notice" role="alert">Unable to load ServiceNow data. {error}</div>}
 
@@ -509,7 +515,7 @@ function GroupDetail({ group, guardrails, decide, submitting, decisionNotes, set
     <section className="evidence-block"><h3>Candidate evidence</h3>{group.evidence.length === 0 ? <p>No candidate records returned for this group.</p> : <CandidateComparison candidates={group.evidence} />}</section>
     <section className="evidence-block"><h3>Recommended action</h3><p>{action}</p>{group.aiLimitations && <p><strong>Limitations:</strong> {group.aiLimitations}</p>}</section>
     {guardrails.length > 0 && <section className="evidence-block"><h3>Linked IRE guardrails</h3>{guardrails.map((guardrail) => <p key={guardrail.sysId || guardrail.number}><strong>{guardrail.number}</strong> · {guardrail.identifier}: {guardrail.description}</p>)}</section>}
-    <section className="evidence-block"><h3>Steward decision notes</h3><textarea className="decision-notes" value={decisionNotes} onChange={(event) => setDecisionNotes(event.target.value)} placeholder="Enter the steward rationale that should be saved to ServiceNow..." rows={3} /></section>
+    <section className="evidence-block"><h3>Steward decision notes</h3><textarea className="decision-notes" value={decisionNotes} onChange={(event) => setDecisionNotes(event.target.value)} placeholder="Enter the steward rationale for this decision..." rows={3} /></section>
     <div className="decision-bar"><button className="primary" disabled={submitting} onClick={() => decide("accept")}>Accept</button><button className="secondary" disabled={submitting} onClick={() => decide("reject")}>Reject</button><button className="secondary" disabled={submitting} onClick={() => decide("defer")}>Defer</button><button className="secondary" disabled={submitting} onClick={() => decide("needs_info")}>Needs info</button></div>
   </section>;
 }
