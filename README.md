@@ -1,6 +1,6 @@
 # CMDB Identity Guard Offline Demo
 
-This is a working demo of Team Data Sorters' ServiceNow hackathon Project. The application gives a CMDB data stewards an explainable workflow for reviewing possible duplicate Configuration Items, comparing candidate evidence, recording simulated decisions, and examining proposed IRE guardrails for a companies CMDB.
+This is a working demo of Team Data Sorters' ServiceNow hackathon Project. The application provides a CMDB data stewards an explainable workflow for reviewing possible duplicate Configuration Items, comparing candidate evidence, recording simulated decisions, and examining proposed IRE guardrails for a company's CMDB.
 
 ## Offline demo
 
@@ -52,4 +52,4 @@ POST /api/identity-guard/analysis/start
 
 ## Project origin and attribution
 
-This repository is a separate continuation of the original [Data Sorters hackathon repository](https://github.com/Phire12/Hackathon_Data_Sorters_UI). It preserves the original Git history and contributor attribution while allowing the offline portfolio demo to evolve without changing the competition project.
+This repository is a separate continuation of the original [Data Sorters hackathon repository](https://github.com/Phire12/Hackathon_Data_Sorters_UI).
