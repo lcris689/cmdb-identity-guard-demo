@@ -1,10 +1,11 @@
 # CMDB Identity Guard Offline Demo
 
-A portfolio-ready, no-credentials continuation of the Data Sorters ServiceNow hackathon UI. The application gives CMDB data stewards an explainable workflow for reviewing possible duplicate Configuration Items, comparing candidate evidence, recording simulated decisions, and examining proposed IRE guardrails.
+This is a working demo of Team Data Sorters' ServiceNow hackathon Project. The application gives a CMDB data stewards an explainable workflow for reviewing possible duplicate Configuration Items, comparing candidate evidence, recording simulated decisions, and examining proposed IRE guardrails for a companies CMDB.
 
 ## Offline demo
 
-The default configuration opens directly into synthetic demo data. It does not require a ServiceNow instance, account, API key, database, or network request after dependencies are installed.
+The default configuration opens directly into synthetic demo data. 
+It does not require a ServiceNow instance, account, API key, database, or network request after dependencies are installed.
 
 Requirements: Node.js 22.13 or later.
 
