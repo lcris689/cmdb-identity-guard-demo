@@ -32,7 +32,7 @@ Then open the local URL printed by Vinext. Use **Start analysis**, **Review queu
 
 | Mode | Offline demo | Mock data | Authentication | ServiceNow access |
 | --- | --- | --- | --- | --- |
-| Portfolio demo (default) | `true` | `true` | Not required | None |
+| Offline demo (default) | `true` | `true` | Not required | None |
 | Protected UI demo | `false` | `true` | Demo access gate | None |
 | Live integration | `false` | `false` | Demo access gate | Server-side proxy |
 
