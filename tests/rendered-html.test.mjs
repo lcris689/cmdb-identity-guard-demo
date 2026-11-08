@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
-async function render() {
+async function withPreview(run) {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const viteCli = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
   const port = 4174;
@@ -24,20 +24,16 @@ async function render() {
       if (preview.exitCode !== null)
         throw new Error(`Vite preview exited before becoming ready.\n${output}`);
 
+      let ready = false;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/`, {
           headers: { accept: "text/html" },
         });
-        if (response.ok) {
-          return {
-            status: response.status,
-            contentType: response.headers.get("content-type") ?? "",
-            html: await response.text(),
-          };
-        }
+        ready = response.ok;
       } catch {
         // The preview server may still be starting.
       }
+      if (ready) return await run(`http://127.0.0.1:${port}`);
       await delay(50);
     }
     throw new Error(`Timed out waiting for Vite preview.\n${output}`);
@@ -48,6 +44,19 @@ async function render() {
     }
     if (preview.exitCode === null) preview.kill("SIGKILL");
   }
+}
+
+async function render() {
+  return withPreview(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/`, {
+      headers: { accept: "text/html" },
+    });
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type") ?? "",
+      html: await response.text(),
+    };
+  });
 }
 
 test("server-renders an immediately usable offline Identity Guard demo", async () => {
@@ -135,12 +144,37 @@ test("Identity Guard proxy uses server-only ServiceNow configuration", async () 
   assert.doesNotMatch(envExample, /NEXT_PUBLIC_SERVICENOW_(USERNAME|PASSWORD|BEARER|TOKEN)/i);
 });
 
-test("offline public mode rejects direct Identity Guard proxy requests", async () => {
-  const route = await readFile(new URL("../app/api/identity-guard/[...path]/route.ts", import.meta.url), "utf8");
+test("offline public mode rejects real GET and POST Identity Guard proxy requests", async () => {
+  await withPreview(async (baseUrl) => {
+    const requests = [
+      fetch(`${baseUrl}/api/identity-guard/summary`),
+      fetch(`${baseUrl}/api/identity-guard/duplicate-groups/mock/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "accept" }),
+      }),
+    ];
 
-  assert.match(route, /NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO/);
-  assert.match(route, /OFFLINE_DEMO_ONLY/);
-  assert.match(route, /status:\s*403/);
+    for (const response of await Promise.all(requests)) {
+      assert.equal(response.status, 403);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.deepEqual(await response.json(), {
+        success: false,
+        data: null,
+        error: {
+          code: "OFFLINE_DEMO_ONLY",
+          message: "The public offline demo does not proxy requests to ServiceNow.",
+        },
+      });
+    }
+  });
+});
+
+test("database binding guidance points to the typed Cloudflare configuration", async () => {
+  const database = await readFile(new URL("../db/index.ts", import.meta.url), "utf8");
+
+  assert.match(database, /cloudflare\.config\.ts/);
+  assert.doesNotMatch(database, /\.openai\/hosting\.json/);
 });
 
 test("Cloudflare deployment explicitly enables only the synthetic offline client", async () => {
