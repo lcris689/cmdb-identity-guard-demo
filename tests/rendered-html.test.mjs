@@ -1,34 +1,59 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
 async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const viteCli = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
+  const port = 4174;
+  const preview = spawn(
+    process.execPath,
+    [viteCli, "preview", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    { cwd: root, stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
   );
+  let output = "";
+  preview.stdout.on("data", (chunk) => { output += chunk; });
+  preview.stderr.on("data", (chunk) => { output += chunk; });
+
+  try {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (preview.exitCode !== null)
+        throw new Error(`Vite preview exited before becoming ready.\n${output}`);
+
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/`, {
+          headers: { accept: "text/html" },
+        });
+        if (response.ok) {
+          return {
+            status: response.status,
+            contentType: response.headers.get("content-type") ?? "",
+            html: await response.text(),
+          };
+        }
+      } catch {
+        // The preview server may still be starting.
+      }
+      await delay(50);
+    }
+    throw new Error(`Timed out waiting for Vite preview.\n${output}`);
+  } finally {
+    if (preview.exitCode === null) {
+      preview.kill();
+      await Promise.race([once(preview, "exit"), delay(2_000)]);
+    }
+    if (preview.exitCode === null) preview.kill("SIGKILL");
+  }
 }
 
 test("server-renders an immediately usable offline Identity Guard demo", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
+  const { status, contentType, html } = await render();
+  assert.equal(status, 200);
+  assert.match(contentType, /^text\/html\b/i);
   assert.match(html, /<title>Data Sorters CMDB Identity Guard<\/title>/i);
   assert.match(html, /CMDB Identity Guard/);
   assert.match(html, /Offline demo/);
@@ -108,4 +133,33 @@ test("Identity Guard proxy uses server-only ServiceNow configuration", async () 
   assert.match(route, /export async function POST/);
   assert.match(envExample, /SERVICENOW_IDENTITY_GUARD_PATH=\/api\/x_kest_data_sort\/data_sorters_identity_guard_api/);
   assert.doesNotMatch(envExample, /NEXT_PUBLIC_SERVICENOW_(USERNAME|PASSWORD|BEARER|TOKEN)/i);
+});
+
+test("offline public mode rejects direct Identity Guard proxy requests", async () => {
+  const route = await readFile(new URL("../app/api/identity-guard/[...path]/route.ts", import.meta.url), "utf8");
+
+  assert.match(route, /NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO/);
+  assert.match(route, /OFFLINE_DEMO_ONLY/);
+  assert.match(route, /status:\s*403/);
+});
+
+test("Cloudflare deployment explicitly enables only the synthetic offline client", async () => {
+  const cloudflareConfig = await readFile(
+    new URL("../cloudflare.config.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    cloudflareConfig,
+    /NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO:\s*bindings\.text\("true"\)/,
+  );
+  assert.match(
+    cloudflareConfig,
+    /NEXT_PUBLIC_IDENTITY_GUARD_USE_MOCKS:\s*bindings\.text\("true"\)/,
+  );
+  assert.match(
+    cloudflareConfig,
+    /NEXT_PUBLIC_IDENTITY_GUARD_API_BASE:\s*bindings\.text\("\/api\/identity-guard"\)/,
+  );
+  assert.doesNotMatch(cloudflareConfig, /SERVICENOW_(?:INSTANCE|USERNAME|PASSWORD|TOKEN)/);
 });

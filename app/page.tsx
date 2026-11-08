@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DuplicateGroup, IreGuardrail, AnalysisRun, IdentityGuardSummary, StewardDecisionResult, identityGuardApi } from "./lib/identity-guard-api";
+import { DuplicateGroup, IreGuardrail, AnalysisRun, IdentityGuardSummary, StewardDecisionResult, identityGuardApi, type CandidateEvidence } from "./lib/identity-guard-api";
 
 type View = "overview" | "runs" | "review" | "guardrails";
 type LoadState = "loading" | "success" | "error";

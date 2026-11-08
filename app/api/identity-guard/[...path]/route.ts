@@ -56,6 +56,20 @@ function responseHeaders(source: Headers) {
 }
 
 async function proxy(request: Request, context: RouteContext) {
+  if (process.env.NEXT_PUBLIC_IDENTITY_GUARD_OFFLINE_DEMO !== "false") {
+    return Response.json(
+      {
+        success: false,
+        data: null,
+        error: {
+          code: "OFFLINE_DEMO_ONLY",
+          message: "The public offline demo does not proxy requests to ServiceNow.",
+        },
+      },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   try {
     if (!(await getDemoSession(request))) {
       return Response.json(
